@@ -34,6 +34,7 @@ class MLFlowExporter:
         source_name: Optional[str] = None,
         source_type: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
+        artifact_uri: Optional[str] = None,
     ):
         """
         Initialize MLFlow exporter.
@@ -45,6 +46,7 @@ class MLFlowExporter:
             source_name: Value to store in mlflow.source.name tag
             source_type: Value to store in mlflow.source.type tag
             params: Optional dict of parameters to log to MLflow
+            artifact_uri: Optional artifact URI to log as a tag (e.g., S3 bucket path)
         """
         self.tracking_uri = tracking_uri
         self.experiment_name = experiment_name or "lm-eval"
@@ -52,6 +54,7 @@ class MLFlowExporter:
         self.source_name = source_name
         self.source_type = source_type
         self.params = params or {}
+        self.artifact_uri = artifact_uri
 
         # Configure MLFlow
         mlflow.set_tracking_uri(self.tracking_uri)
@@ -61,7 +64,9 @@ class MLFlowExporter:
         try:
             self.experiment = mlflow.get_experiment_by_name(self.experiment_name)
             if self.experiment is None:
-                self.experiment_id = mlflow.create_experiment(self.experiment_name)
+                self.experiment_id = mlflow.create_experiment(self.experiment_name,
+                                                            #   artifact_location="oci://1/2"
+                                                              )
                 self.experiment = mlflow.get_experiment(self.experiment_id)
             else:
                 self.experiment_id = self.experiment.experiment_id
@@ -238,10 +243,24 @@ class MLFlowExporter:
                 # Log basic run information
                 mlflow.set_tag("lm_eval.version", "latest")
                 mlflow.set_tag("lm_eval.output_dir", output_dir)
+                mlflow.set_tag("prova", "https://google.com")
+                mlflow.log_param("OCI Artifact", "quay.io/mmortari/demo20251206:evaluation20251206v2")
+                mlflow.set_tag("mlflow.note.content", "Persisted an OCI Artifact for permanent audit of traces and results at: [quay.io/mmortari/demo20251206:evaluation20251206v2](https://quay.io/repository/mmortari/demo20251206?tab=tags&tag=evaluation20251206v2)")
+                # md = "[Open Dashboard](https://my.domain.com/page)"
+                # path = "link.md"
+                # with open(path, "w") as f:
+                #     f.write(md)
+                # mlflow.log_artifact(path)
+                # with open(path, "w") as f:
+                #     f.write("overwrite")
+                # mlflow.log_artifact(path)
                 if self.source_name:
                     mlflow.set_tag("mlflow.source.name", self.source_name)
                 if self.source_type:
                     mlflow.set_tag("mlflow.source.type", self.source_type)
+                if self.artifact_uri:
+                    mlflow.set_tag("mlflow.artifact.uri", self.artifact_uri)
+                    print(f"Logged artifact URI: {self.artifact_uri}")
                 if self.params:
                     # Convert all values to strings for MLflow params
                     mlflow.log_params(
@@ -260,7 +279,7 @@ class MLFlowExporter:
 
                 print(f"MLFlow export completed successfully. Run ID: {run_id}")
                 print(f"View results at: {self.tracking_uri}/#/experiments/{self.experiment_id}/runs/{run_id}")
-
+                run
                 return run_id
 
         except Exception as e:
@@ -278,6 +297,7 @@ def main():
     parser.add_argument("--results-file", help="Specific results file to load (optional)")
     parser.add_argument("--source-name", help="Value for mlflow.source.name tag (e.g., LMEvalJob CR name)")
     parser.add_argument("--source-type", help="Value for mlflow.source.type tag (e.g., LMEvalJob)")
+    parser.add_argument("--artifact-uri", help="Arbitrary artifact URI to log as a tag (e.g., S3 bucket path)")
     parser.add_argument("--params-json", help="JSON dict of parameters to log to MLflow")
     parser.add_argument("--export-types", nargs="+", choices=["metrics", "artifacts"],
                        default=["metrics", "artifacts"], help="What to export to MLFlow")
@@ -291,6 +311,7 @@ def main():
     results_file = args.results_file or os.getenv("MLFLOW_RESULTS_FILE")
     source_name = args.source_name or os.getenv("MLFLOW_SOURCE_NAME")
     source_type = args.source_type or os.getenv("MLFLOW_SOURCE_TYPE")
+    artifact_uri = args.artifact_uri or os.getenv("MLFLOW_ARTIFACT_URI")
     params_json = args.params_json or os.getenv("MLFLOW_PARAMS_JSON")
     params = {}
     if params_json:
@@ -318,6 +339,8 @@ def main():
         print(f"  Source Name: {source_name}")
     if source_type:
         print(f"  Source Type: {source_type}")
+    if artifact_uri:
+        print(f"  Artifact URI: {artifact_uri}")
     if params:
         print(f"  Params: {json.dumps(params)}")
     print(f"  Export Types: {', '.join(export_types)}")
@@ -331,6 +354,7 @@ def main():
             source_name=source_name,
             source_type=source_type,
             params=params,
+            artifact_uri=artifact_uri,
         )
 
         final_run_id = exporter.export_results(

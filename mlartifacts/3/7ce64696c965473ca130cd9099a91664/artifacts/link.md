@@ -1,0 +1,1 @@
+[Open Dashboard](https://my.domain.com/page)
